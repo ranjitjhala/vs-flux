@@ -8,7 +8,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "vs-flux" is now active!');
+	console.log('woo! woo! your extension "vs-flux" is now active!');
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
@@ -93,14 +93,14 @@ class CursorPositionViewProvider implements vscode.WebviewViewProvider {
                     body {
                         display: flex;
                         justify-content: center;
-                        align-items: center;
+                        align-items: left;
                         height: 100%;
                         margin: 0;
                         font-family: var(--vscode-font-family);
                         background-color: var(--vscode-editor-background);
                     }
                     #cursor-position {
-                        color: red;
+                        /* color: red; */
                         font-size: 16px;
                         font-weight: bold;
                     }
