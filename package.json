@@ -22,18 +22,18 @@
     "viewsContainers": {
       "panel": [
         {
-          "id": "cursorPositionContainer",
-          "title": "Cursor Position",
+          "id": "fluxContainer",
+          "title": "Flux",
           "icon": "path/to/icon.svg"
         }
       ]
     },
     "views": {
-      "cursorPositionContainer": [
+      "fluxContainer": [
         {
           "type": "webview",
-          "id": "cursorPositionView",
-          "name": "Cursor Position"
+          "id": "fluxView",
+          "name": "Flux"
         }
       ]
     }
