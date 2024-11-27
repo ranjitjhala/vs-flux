@@ -2,6 +2,13 @@
 
 This is the README for your extension "vs-flux". After writing up a brief description, we recommend including the following sections.
 
+## TODO
+
+- [ ] move pane to the right?
+- [ ] split-by-id (vertical)
+- [ ] vsix package
+- [ ] source-level identifiers
+
 ## Features
 
 Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
