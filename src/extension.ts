@@ -1,45 +1,30 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
 
 const checkerPath = "log/checker";
 
-
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) { return []; }
     const workspacePath = workspaceFolders[0].uri.fsPath;
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code wll only be executed once when your extension is activated
-	console.log('woo! woo! your extension "vs-flux" is now active!', workspacePath);
+	console.log('Extension "vs-flux" is now active in workspace:', workspacePath);
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('vs-flux.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            const position = editor.selection.active;
-            const lineNumber = position.line + 1; // VS Code is 0-based
-            vscode.window.showInformationMessage(`The cursor is on line ${lineNumber}`);
-        }
-		// vscode.window.showInformationMessage('Hail me hearties from vs-flux!');
-	});
-	context.subscriptions.push(disposable);
-
-    // Create InfoProvider
-    const infoProvider = new InfoProvider(workspacePath, new Set<string>);
-
-	// Register a custom webview panel
+    const infoProvider = new InfoProvider(workspacePath);
 	const fluxViewProvider = new FluxViewProvider(context.extensionUri, infoProvider);
+
+    let disposable = vscode.commands.registerCommand('Flux.toggle', () => {
+        fluxViewProvider.toggle();
+    });
+    context.subscriptions.push(disposable);
+
+    /************************************************************/
+	// Register a custom webview panel
+
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider('fluxView', fluxViewProvider)
 	);
@@ -50,8 +35,8 @@ export function activate(context: vscode.ExtensionContext) {
 			if (event.textEditor) {
 				const position = event.textEditor.selection.active;
                 const fileName = event.textEditor.document.fileName;
-				infoProvider.updatePosition(fileName, position.line + 1, position.character + 1);
-                fluxViewProvider.updateView(infoProvider);
+				infoProvider.setPosition(fileName, position.line + 1, position.character + 1);
+                fluxViewProvider.updateView();
 			}
 		})
 	);
@@ -59,12 +44,10 @@ export function activate(context: vscode.ExtensionContext) {
     /* Watch for changes to the trace-file ***********************************************/
 
     // Track the set of saved (updated) source files
-
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument((document) => {
-            console.log('changed (0): ' + document.fileName);
             if (document.fileName.endsWith('.rs')) {
-                console.log('changed (2): ' + document.fileName);
+                console.log('source file changed: ' + document.fileName);
                 infoProvider.addChangedFile(document.fileName);
             }
         }
@@ -75,10 +58,8 @@ export function activate(context: vscode.ExtensionContext) {
     const fileWatcher = vscode.workspace.createFileSystemWatcher(logFilePattern);
 
     fileWatcher.onDidChange((uri) => {
-        console.log(`Log file changed: ${uri.fsPath}`);
-        updateFluxCheckerTrace(context, infoProvider).then(() => {
-            fluxViewProvider.updateView(infoProvider);
-        });
+        console.log(`checker trace changed: ${uri.fsPath}`);
+        fluxViewProvider.reloadView();
     });
 
     /******************************************************************************/
@@ -92,19 +73,20 @@ type LineMap = Map<number, LineInfo>;
 
 class InfoProvider {
 
-    constructor(private readonly _workspacePath : string, private readonly _changedFiles: Set<string>) {}
+    constructor(private readonly _workspacePath : string) {}
 
     private _fileMap: Map<string, LineMap> = new Map();
 
-    currentFile: string = "";
+    currentFile?: string;
     currentLine: number = 0;
     currentColumn: number = 0;
+    private _changedFiles: Set<string> = new Set();
 
     private relFile(file: string) : string {
         return path.relative(this._workspacePath, file);
     }
 
-    public updatePosition(file: string, line: number, column: number) {
+    public setPosition(file: string, line: number, column: number) {
         this.currentFile = this.relFile(file);
         this.currentLine = line;
         this.currentColumn = column;
@@ -114,31 +96,58 @@ class InfoProvider {
         this._changedFiles.add(this.relFile(file));
     }
 
-    public getChangedFiles() : Set<string> {
+    private getChangedFiles() : Set<string> {
         const res = new Set([...this._changedFiles]);
-        res.add(this.currentFile);
-        return res
+        const cur = this.currentFile;
+        if (cur) { res.add(cur); };
+        return res;
     }
 
-    public updateInfo(fileName: string, fileInfo: LineInfo[]) {
+    private updateInfo(fileName: string, fileInfo: LineInfo[]) {
         const lineMap = new Map(fileInfo.map(item => [item.line, item]));
         this._fileMap.set(fileName, lineMap);
         this._changedFiles.delete(fileName);
     }
 
-    public getLineInfo(file:string, line: number) : LineInfo | undefined {
-        const res = this._fileMap.get(file)?.get(line);
-        console.log('getLineInfo', file, line, res);
-        return res;
+    public getLineInfo() : LineInfo | undefined {
+        const cur = this.currentFile;
+        if (cur) {
+            return this._fileMap.get(cur)?.get(this.currentLine);
+        }
+        return;
     }
 
+    public getLine(): number {
+        return this.currentLine;
+    }
+
+    private openFiles() : Set<string> {
+        const files = vscode.workspace.textDocuments
+                        .filter(doc => doc.fileName.endsWith('.rs'))
+                        .map(doc => this.relFile(doc.fileName));
+        return new Set(files);
+    }
+
+    public async loadFluxInfo() {
+      try {
+          const changedFiles = this.getChangedFiles();
+          const files = changedFiles.size > 0 ? changedFiles : this.openFiles();
+          // console.log('loading info for files: ', files);
+          const lineInfos = await readFluxCheckerTrace(files);
+          lineInfos.forEach((lineInfo, fileName) => {
+              // console.log('updating info for: ', fileName, lineInfo);
+              this.updateInfo(fileName, lineInfo);
+          });
+      } catch (error) {
+          vscode.window.showErrorMessage(`Failed to load line info: ${error}`);
+      }
+    }
 }
 
 class FluxViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
+    private _panel?: vscode.WebviewPanel;
     private _currentLine: number = 0;
-    // private _currentColumn: number = 0;
-    // private _currentFileName: string = "";
     private _currentRcx : string = "...";
     private _currentEnv : string = "...";
     private _fontFamily: string | undefined = 'Arial';
@@ -146,17 +155,52 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
 
     constructor(private readonly _extensionUri: vscode.Uri, private readonly _infoProvider: InfoProvider) {}
 
-    public updateView(infoProvider: InfoProvider) {
-        const file = infoProvider.currentFile;
-        const line = infoProvider.currentLine;
-        console.log('updateView', file, line);
-        const info = this._infoProvider.getLineInfo(file, line);
-        this._currentLine = line;
+    private show() {
+        this._panel = vscode.window.createWebviewPanel(
+                        'FluxInfoView',
+                        'Flux',
+                        vscode.ViewColumn.Beside,
+                        { enableScripts: true,
+                          retainContextWhenHidden: true
+                        });
+        this._panel.onDidDispose(() => {
+            this._panel = undefined;
+        });
+        this.reloadView();
+    }
+
+    public hide(){
+        if (this._panel) {
+            this._panel.dispose();
+            this._panel = undefined;
+        }
+    }
+
+    public toggle() {
+        if (this._panel) {
+            this.hide();
+        } else {
+            this.show();
+        }
+    }
+
+    public async reloadView() {
+        this._infoProvider.loadFluxInfo().then(() => {
+            this.updateView();
+        });
+    }
+
+    public updateView() {
+        const info = this._infoProvider.getLineInfo();
+        this._currentLine = this._infoProvider.getLine();
         this._currentRcx = info ? info.rcx : "...";
         this._currentEnv = info ? info.env : "...";
-        if (this._view) {
-            this._view.webview.html = this._getHtmlForWebview();
-        }
+        const config = vscode.workspace.getConfiguration('editor');
+        this._fontFamily = config.get<string>('fontFamily');
+        this._fontSize = config.get<number>('fontSize');
+        const html = this._getHtmlForWebview();
+        if (this._view) { this._view.webview.html = html; }
+        if (this._panel) { this._panel.webview.html = html; }
     }
 
     public resolveWebviewView(
@@ -222,19 +266,6 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
     }
 }
 
-async function updateFluxCheckerTrace(context: vscode.ExtensionContext, infoProvider: InfoProvider) {
-    try {
-        const files = infoProvider.getChangedFiles();
-        const lineInfos = await readFluxCheckerTrace(files);
-        lineInfos.forEach((lineInfo, fileName) => {
-            console.log('updating info for: ', fileName, lineInfo);
-            infoProvider.updateInfo(fileName, lineInfo);
-        });
-    } catch (error) {
-        vscode.window.showErrorMessage(`Failed to load line info: ${error}`);
-    }
-}
-
 async function readFluxCheckerTrace(changedFiles: Set<string>): Promise<Map<string, LineInfo[]>> {
     try {
         // Get the workspace folder
@@ -248,7 +279,7 @@ async function readFluxCheckerTrace(changedFiles: Set<string>): Promise<Map<stri
         const logData = await vscode.workspace.fs.readFile(logUri);
         const logString = Buffer.from(logData).toString('utf8');
 
-        console.log('parsed logString size = ', logString.length, ' changed files = ', changedFiles);
+        // console.log('parsed logString size = ', logString.length, ' changed files = ', changedFiles);
         // Parse the logString
         const data = parseEventLog(changedFiles, logString);
         return data;
