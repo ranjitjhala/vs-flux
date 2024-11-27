@@ -4,12 +4,14 @@ This is the README for your extension "vs-flux". After writing up a brief descri
 
 ## TODO
 
-- [ ] move pane to the right?
-- [ ] split-by-id (vertical)
-- [ ] vsix package
-- [ ] source-level identifiers
+- [x] move pane to the right?
+- [ ] split-by-id (vertical)    [flux]
+- [ ] vsix package              [vs]
+- [ ] source-level identifiers  [flux-samir]
 
 ## Features
+
+- Describe `Flux toggle` command
 
 Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
 

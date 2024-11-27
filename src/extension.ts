@@ -148,8 +148,8 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _panel?: vscode.WebviewPanel;
     private _currentLine: number = 0;
-    private _currentRcx : string = "...";
-    private _currentEnv : string = "...";
+    private _currentRcx : Rcx | undefined;
+    private _currentEnv : TypeEnv | undefined;
     private _fontFamily: string | undefined = 'Arial';
     private _fontSize: number | undefined = 14;
 
@@ -190,17 +190,20 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+
     public updateView() {
         const info = this._infoProvider.getLineInfo();
         this._currentLine = this._infoProvider.getLine();
-        this._currentRcx = info ? info.rcx : "...";
-        this._currentEnv = info ? info.env : "...";
-        const config = vscode.workspace.getConfiguration('editor');
-        this._fontFamily = config.get<string>('fontFamily');
-        this._fontSize = config.get<number>('fontSize');
-        const html = this._getHtmlForWebview();
-        if (this._view) { this._view.webview.html = html; }
-        if (this._panel) { this._panel.webview.html = html; }
+        if (info) {
+          this._currentRcx = JSON.parse(info.rcx);
+          this._currentEnv = JSON.parse(info.env);
+          const config = vscode.workspace.getConfiguration('editor');
+          this._fontFamily = config.get<string>('fontFamily');
+          this._fontSize = config.get<number>('fontSize');
+          const html = this._getHtmlForWebview();
+          // if (this._view) { this._view.webview.html = html; }
+          if (this._panel) { this._panel.webview.html = html; }
+        }
     }
 
     public resolveWebviewView(
@@ -222,6 +225,29 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtmlForWebview() {
+
+        const rcxBindings = this._currentRcx?.bindings.map(bind => `
+            <tr>
+              <td>${bind.name}</td>
+              <td>${bind.sort}</td>
+            </tr>
+          `).join('');
+
+        const rcxExprs = this._currentRcx?.exprs.map(expr => `
+            <tr>
+              <td>${expr}</td>
+            </tr>
+          `).join('');
+
+        const envBindings = this._currentEnv?.map(bind => `
+            <tr>
+              <td>${bind.loc}</td>
+              <td>${bind.ty}</td>
+            </tr>
+          `).join('');
+
+
+
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -241,23 +267,50 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
                     #cursor-position {
                         font-size: ${this._fontSize};
                     }
+                    table, th, td {
+                        border: 0px solid black;
+                        border-collapse: collapse;
+                    }
+                    th, td {
+                      padding: 5px;
+                    }
+                    th {
+                      text-align: left;
+                    }
                 </style>
             </head>
             <body>
                 <div id="cursor-position">
                     <table style="border-collapse: collapse">
                     <tr>
-                      <th style="padding: 8px; border: 1px solid black">Line</th>
-                      <td style="padding: 8px; border: 1px solid black">${this._currentLine}</td>
+                      <th>Line</th> <td>${this._currentLine}</t>
                     </tr>
-                    <tr style="color: green">
-                      <th style="padding: 8px; border: 1px solid black">RCX</th>
-                      <td style="padding: 8px; border: 1px solid black">${this._currentRcx}</td>
+                    </table>
+
+                    <br>
+
+                    <table style="border-collapse: collapse">
+                    <tr>
+                      <th style="color: green">Names</th>
                     </tr>
-                    <tr style="color: blue">
-                      <th style="padding: 8px; border: 1px solid black">ENV</th>
-                      <td style="padding: 8px; border: 1px solid black">${this._currentEnv}</td>
+                    ${rcxBindings}
+                    </table>
+
+                    <br>
+
+                    <table>
+                    <tr>
+                      <th style="color: purple">Constraints</th>
                     </tr>
+                    ${rcxExprs}
+                    </table>
+                    <br>
+                    <table>
+                    <tr>
+                      <th style="color: blue">Types</th>
+                      <td></td>
+                    </tr>
+                    ${envBindings}
                     </table>
                 </div>
             </body>
@@ -287,6 +340,21 @@ async function readFluxCheckerTrace(changedFiles: Set<string>): Promise<Map<stri
         vscode.window.showErrorMessage(`Failed to read line info: ${error}`);
         return new Map();
     }
+}
+
+type TypeEnvBind = {
+  loc: String,
+  kind: String,
+  ty: String,
+}
+type TypeEnv = TypeEnvBind[];
+type RcxBind = {
+    name: String,
+    sort: String,
+}
+type Rcx = {
+    bindings: RcxBind[],
+    exprs: String[],
 }
 
 type StmtSpan = {
