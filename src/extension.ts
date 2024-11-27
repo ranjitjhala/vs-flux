@@ -228,21 +228,19 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
 
         const rcxBindings = this._currentRcx?.bindings.map(bind => `
             <tr>
-              <td>${bind.name}</td>
-              <td>${bind.sort}</td>
+                <td><b style="color: #F26123">${bind.name}</b> : ${bind.sort} </td>
             </tr>
           `).join('');
 
         const rcxExprs = this._currentRcx?.exprs.map(expr => `
             <tr>
-              <td>${expr}</td>
+                <td>${expr}</td>
             </tr>
           `).join('');
 
         const envBindings = this._currentEnv?.map(bind => `
             <tr>
-              <td>${bind.loc}</td>
-              <td>${bind.ty}</td>
+                <td><b style="color: #F26123">${bind.loc}</b> : ${bind.ty} </td>
             </tr>
           `).join('');
 
@@ -262,6 +260,7 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
                         height: 100%;
                         margin: 0;
                         font-family: ${this._fontFamily};
+                        font-size: ${this._fontSize};
                         background-color: var(--vscode-editor-background);
                     }
                     #cursor-position {
@@ -291,7 +290,7 @@ class FluxViewProvider implements vscode.WebviewViewProvider {
 
                     <table style="border-collapse: collapse">
                     <tr>
-                      <th style="color: green">Names</th>
+                      <th style="color: green">Values</th>
                     </tr>
                     ${rcxBindings}
                     </table>
@@ -393,7 +392,7 @@ function parseEvent(files: Set<string>, event: any): [string, LineInfo] | undefi
     if (event.fields.event === 'statement_end') {
         const stmt_span = parseStatementSpan(event.fields.stmt_span);
         if (stmt_span && files.has(stmt_span.file)) {
-            const info = {line: stmt_span.end_line, rcx: event.fields.rcx, env: event.fields.env};
+            const info = {line: stmt_span.end_line, rcx: event.fields.rcx_json, env: event.fields.env_json};
             return [stmt_span.file, info];
         }
     }
